@@ -1,0 +1,7 @@
+pynput==1.7.7 #control keyboard and mouse input
+psutil==6.0.0 #system information like cpu and memory usage
+scikit-learn==1.5.2 #ML library
+numpy==2.1.1 #numeric computing library
+telethon==1.37.0 #python client intract with telegram
+requests==2.31.3 #send HTTP requests
+pyinstaller==6.13.0 #python to executable file

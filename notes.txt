@@ -1,0 +1,2 @@
+.db -> database used by the apps to store info
+.bat -> runs window command automatically

@@ -7,7 +7,7 @@ import win32gui
 import win32process
 
 DB_PATH = "data/activity.db"
-MIN_SESSION_SECONDS = 2   # Ignore noisy rapid switching
+MIN_SESSION_SECONDS = 2  # Ignore noisy rapid switching
 
 
 # -------------------------------
@@ -26,11 +26,18 @@ def init_db():
             start_time TEXT,
             end_time TEXT,
             duration_seconds INTEGER,
-            event_type TEXT
+            event_type TEXT,
+            inferred_topic TEXT
         )
     """)
 
-    # Add index for faster querying later
+    # migrate existing table to include inferred_topic if missing
+    cursor.execute("PRAGMA table_info('sessions')")
+    existing_cols = [row[1] for row in cursor.fetchall()]
+    if 'inferred_topic' not in existing_cols:
+        cursor.execute("ALTER TABLE sessions ADD COLUMN inferred_topic TEXT")
+
+    # Index for faster future querying
     cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_start_time
         ON sessions(start_time)
@@ -57,27 +64,51 @@ def get_active_window():
 
 
 # -------------------------------
-# DETECT EVENT TYPE
+# DETECT EVENT TYPE + TOPIC
 # -------------------------------
-def detect_event(window_title):
+def detect_event(process, window_title):
     title = window_title.lower()
+    process = process.lower()
 
-    if "chatgpt" in title:
-        return "chatgpt_opened"
-    elif "error" in title:
-        return "error_detected"
-    elif "exception" in title:
-        return "exception_detected"
-    elif "traceback" in title:
-        return "traceback_detected"
-    else:
-        return "normal"
+    event_type = "normal"
+    inferred_topic = None
+
+    # Browser detection
+    if any(browser in process for browser in ["chrome", "brave", "msedge"]):
+
+        # Google Search detection
+        if "google search" in title:
+            event_type = "google_search"
+
+            # Extract search query
+            try:
+                inferred_topic = window_title.split("- Google Search")[0].strip()
+            except Exception:
+                inferred_topic = None
+
+        elif "chatgpt" in title:
+            event_type = "chatgpt_opened"
+
+        elif "gemini" in title:
+            event_type = "gemini_opened"
+
+        elif "geeksforgeeks" in title:
+            event_type = "gfg_opened"
+
+        else:
+            event_type = "browser_tab"
+
+    # Error detection
+    elif any(word in title for word in ["error", "exception", "traceback"]):
+        event_type = "error_detected"
+
+    return event_type, inferred_topic
 
 
 # -------------------------------
 # SAVE SESSION SAFELY
 # -------------------------------
-def save_session(cursor, process, title, start_time, event_type):
+def save_session(cursor, process, title, start_time, event_type, inferred_topic):
     if process is None or start_time is None:
         return
 
@@ -90,18 +121,19 @@ def save_session(cursor, process, title, start_time, event_type):
 
     cursor.execute("""
         INSERT INTO sessions
-        (process, window_title, start_time, end_time, duration_seconds, event_type)
-        VALUES (?, ?, ?, ?, ?, ?)
+        (process, window_title, start_time, end_time, duration_seconds, event_type, inferred_topic)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
     """, (
         process,
         title,
         start_time.isoformat(),
         end_time.isoformat(),
         duration,
-        event_type
+        event_type,
+        inferred_topic
     ))
 
-    print(f"Saved: {process} | {duration}s | {event_type}")
+    print(f"Saved: {process} | {duration}s | {event_type} | {inferred_topic}")
 
 
 # -------------------------------
@@ -116,24 +148,33 @@ def log_activity():
     last_process = None
     last_title = None
     last_event = None
+    last_topic = None
     start_time = None
 
     try:
         while True:
             process, window_title = get_active_window()
-            event_type = detect_event(window_title)
+            event_type, inferred_topic = detect_event(process, window_title)
 
-            # Detect session change (process OR title change)
+            # Detect session change
             if process != last_process or window_title != last_title:
 
                 # Save previous session
-                save_session(cursor, last_process, last_title, start_time, last_event)
+                save_session(
+                    cursor,
+                    last_process,
+                    last_title,
+                    start_time,
+                    last_event,
+                    last_topic
+                )
                 conn.commit()
 
                 # Start new session
                 last_process = process
                 last_title = window_title
                 last_event = event_type
+                last_topic = inferred_topic
                 start_time = datetime.now()
 
             time.sleep(2)
@@ -143,7 +184,14 @@ def log_activity():
 
     finally:
         # Save last active session on shutdown
-        save_session(cursor, last_process, last_title, start_time, last_event)
+        save_session(
+            cursor,
+            last_process,
+            last_title,
+            start_time,
+            last_event,
+            last_topic
+        )
         conn.commit()
         conn.close()
         print("Logger safely closed.")

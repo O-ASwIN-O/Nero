@@ -1,4 +1,0 @@
-.db -> database used by the apps to store info
-.bat -> runs window command automatically
-
-sessions is the table name used

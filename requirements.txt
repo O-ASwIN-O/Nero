@@ -1,5 +1,7 @@
-psutil==6.0.0 # inforrmation about system cpu and memory usage
-scikit-learn==1.5.2 # ml library for training and evaluating models
-numpy==2.1.1 # numerical computing library for handling arrays and matrices
-pywin32==306 # provides access to Windows APIs for system information and process management
-pyinstaller==6.13.0 # for packaging the application into a standalone executable
+psutil
+pynput
+pytesseract
+pillow
+rich
+watchdog
+pygetwindow

@@ -1,0 +1,2 @@
+﻿NAME             ID              SIZE      MODIFIED     
+llama2:latest    78e26419b446    3.8 GB    5 months ago    
